@@ -5,6 +5,8 @@
 NumPyNet est une implémentation complète de Keras/TensorFlow en pur Python/NumPy.
 Aucune dépendance externe (sauf NumPy) - parfait pour comprendre le fonctionnement interne des réseaux de neurones.
 
+**C'est pas une copie exacte et parfaite de keras**. Je l'ai construit en 2 jours. Elle peut contenir des bugs. C'est pour çà que je compte sur vous pour développer cette lib.
+
 ---
 
 ## Table des Matières
@@ -22,7 +24,7 @@ Aucune dépendance externe (sauf NumPy) - parfait pour comprendre le fonctionnem
 
 ```bash
 # Cloner le dépôt
-git clone https://github.com/yourusername/numpynet.git
+git clone https://github.com/SamirGPT/numpynet.git
 cd numpynet
 
 # Installer (juste NumPy requis)
