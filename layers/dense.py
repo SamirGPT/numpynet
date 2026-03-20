@@ -55,9 +55,6 @@ class Dense(Layer):
         self.weights = None
         self.bias = None
 
-        # Alias pour compatibilité avec les optimiseurs
-        self._kernel = None
-
         # Gradients
         self.d_weights = None
         self.d_bias = None
@@ -107,33 +104,25 @@ class Dense(Layer):
             np.ndarray: Matrice de poids initialisée.
         """
         if self.kernel_initializer == 'he_normal':
-            # Initialisation He (adaptée pour ReLU et ses variantes)
             return np.random.randn(input_dim, output_dim) * np.sqrt(2.0 / input_dim)
         elif self.kernel_initializer == 'he_uniform':
-            return np.random.uniform(-np.sqrt(6.0 / input_dim),
-                                      np.sqrt(6.0 / input_dim),
-                                      (input_dim, output_dim))
+            limit = np.sqrt(6.0 / input_dim)
+            return np.random.uniform(-limit, limit, (input_dim, output_dim))
         elif self.kernel_initializer == 'xavier_normal':
             return np.random.randn(input_dim, output_dim) * np.sqrt(2.0 / (input_dim + output_dim))
         elif self.kernel_initializer == 'xavier_uniform':
-            return np.random.uniform(-np.sqrt(6.0 / (input_dim + output_dim)),
-                                      np.sqrt(6.0 / (input_dim + output_dim)),
-                                      (input_dim, output_dim))
+            limit = np.sqrt(6.0 / (input_dim + output_dim))
+            return np.random.uniform(-limit, limit, (input_dim, output_dim))
         elif self.kernel_initializer == 'glorot_normal':
             return np.random.randn(input_dim, output_dim) * np.sqrt(1.0 / (input_dim + output_dim))
         elif self.kernel_initializer == 'glorot_uniform':
-            return np.random.uniform(-np.sqrt(6.0 / (input_dim + output_dim)),
-                                      np.sqrt(6.0 / (input_dim + output_dim)),
-                                      (input_dim, output_dim))
+            limit = np.sqrt(6.0 / (input_dim + output_dim))
+            return np.random.uniform(-limit, limit, (input_dim, output_dim))
         elif self.kernel_initializer == 'orthogonal':
-            # Initialisation orthogonale (pour RNNs)
-            flat = input_dim
-            for i in range(len(input_dim) - 1, 0, -1):
-                flat *= i
-            g = np.random.randn(flat, output_dim)
-            # QR decomposition pour orthogonalité
-            q, r = np.linalg.qr(g)
-            return q * np.sqrt(2.0)
+            # Initialisation orthogonale
+            a = np.random.randn(input_dim, output_dim)
+            u, s, vh = np.linalg.svd(a, full_matrices=False)
+            return u if u.shape == (input_dim, output_dim) else vh.T
         elif self.kernel_initializer == 'zeros':
             return np.zeros((input_dim, output_dim))
         elif self.kernel_initializer == 'ones':
@@ -172,19 +161,15 @@ class Dense(Layer):
         Returns:
             np.ndarray: Sortie de forme (batch_size, units).
         """
-        # Construire la couche si pas encore faite
         if not self.built:
             self.build(inputs.shape)
 
         self.input = inputs
-
-        # Calcul: output = input @ weights + bias
         output = np.dot(inputs, self.weights)
 
         if self.use_bias:
             output += self.bias
 
-        # Appliquer l'activation si définie
         if self.activation is not None:
             output = self.activation(output)
 
@@ -202,18 +187,15 @@ class Dense(Layer):
         Returns:
             np.ndarray: Gradient de la perte par rapport à l'entrée.
         """
-        # Gradient de l'activation (si présente)
         if self.activation is not None:
             grad_output = self.activation.gradient(grad_output, self.output)
 
         # Gradient des poids: dL/dW = X.T @ dL/dY
+        # On ne divise PAS par len(self.input) ici car la perte le fait déjà.
         grad_weights = np.dot(self.input.T, grad_output)
-        grad_weights /= len(self.input)
 
-        # Gradient du biais: dL/db = sum(dL/dY, axis=0)
         if self.use_bias:
             grad_bias = np.sum(grad_output, axis=0, keepdims=True)
-            grad_bias /= len(self.input)
         else:
             grad_bias = None
 
@@ -224,7 +206,7 @@ class Dense(Layer):
         if optimizer is not None and self.trainable:
             optimizer.update(self, grad_weights, grad_bias)
 
-        # Stocker les gradients pour l'optimiseur
+        # Stocker les gradients
         self.d_weights = grad_weights
         self.d_bias = grad_bias
 

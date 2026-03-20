@@ -13,17 +13,6 @@ from ..core.layer import Layer
 class Conv2D(Layer):
     """
     Couche de convolution 2D.
-
-    Cette couche applique une convolution sur les entrées 2D (images).
-    Elle est le bloc de base des réseaux de neurones convolutifs (CNN).
-
-    Attributes:
-        filters (int): Nombre de filtres (noyaux de convolution).
-        kernel_size (tuple): Taille du noyau de convolution.
-        strides (tuple): Pas de la convolution.
-        padding (str): Type de padding ('same' ou 'valid').
-        activation (callable): Fonction d'activation.
-        use_bias (bool): Si True, ajoute un biais.
     """
 
     def __init__(self,
@@ -35,18 +24,6 @@ class Conv2D(Layer):
                  use_bias: bool = True,
                  kernel_initializer: str = 'he_normal',
                  name: Optional[str] = None):
-        """
-        Initialise la couche Conv2D.
-
-        Args:
-            filters (int): Nombre de filtres de sortie.
-            kernel_size (tuple): Taille du noyau (height, width).
-            strides (tuple): Pas de la convolution (h, w).
-            padding (str): 'same' ou 'valid'.
-            activation (callable, optional): Fonction d'activation.
-            use_bias (bool): Si True, utilise un biais.
-            kernel_initializer (str): Méthode d'initialisation des poids.
-        """
         super().__init__(name=name, trainable=True)
         self.filters = filters
         self.kernel_size = kernel_size
@@ -57,8 +34,12 @@ class Conv2D(Layer):
         self.kernel_initializer = kernel_initializer
 
         # Paramètres
-        self.kernel = None
+        self.weights = None  # Utilisation de 'weights' pour compatibilité avec les optimiseurs
         self.bias = None
+
+        # Gradients
+        self.d_weights = None
+        self.d_bias = None
 
         # Pour le backward pass
         self.input_tensor = None
@@ -68,210 +49,128 @@ class Conv2D(Layer):
         self.input_shape = None
         self.built = False
 
-    def build(self, input_shape: Tuple[int, int, int]) -> None:
-        """
-        Construit la couche en initialisant les poids.
+    @property
+    def kernel(self):
+        """Alias pour weights."""
+        return self.weights
 
-        Args:
-            input_shape (tuple): Forme de l'entrée (height, width, channels).
-        """
+    @kernel.setter
+    def kernel(self, value):
+        self.weights = value
+
+    def build(self, input_shape: Tuple[int, int, int]) -> None:
         self.input_shape = input_shape
         channels = input_shape[2]
         kernel_h, kernel_w = self.kernel_size
 
-        # Initialisation des poids (kernels)
-        # Xavier/He initialization adaptée pour les convolutions
-        self.kernel = np.random.randn(
-            kernel_h, kernel_w, channels, self.filters
-        ) * np.sqrt(2.0 / (kernel_h * kernel_w * channels))
+        # Initialisation He
+        limit = np.sqrt(2.0 / (kernel_h * kernel_w * channels))
+        self.weights = np.random.randn(kernel_h, kernel_w, channels, self.filters) * limit
 
         if self.use_bias:
-            self.bias = np.zeros((self.filters,))
+            self.bias = np.zeros((1, 1, 1, self.filters))
         else:
             self.bias = None
 
         self.built = True
 
     def forward(self, inputs: np.ndarray, training: bool = True) -> np.ndarray:
-        """
-        Passe avant de la convolution 2D.
-
-        Args:
-            inputs (np.ndarray): Données d'entrée de forme (batch, height, width, channels).
-            training (bool): Indique si le modèle est en entraînement.
-
-        Returns:
-            np.ndarray: Sortie de forme (batch, new_height, new_width, filters).
-        """
-        # Construire si nécessaire
         if not self.built:
             self.build(inputs.shape[1:])
 
         self.input_tensor = inputs
-        batch_size = inputs.shape[0]
+        batch_size, h_in, w_in, c_in = inputs.shape
+        kh, kw = self.kernel_size
+        sh, sw = self.strides
 
         # Padding
         if self.padding == 'same':
-            pad_h = (self.kernel_size[0] - 1) // 2
-            pad_w = (self.kernel_size[1] - 1) // 2
-            inputs_padded = np.pad(
-                inputs,
-                ((0, 0), (pad_h, pad_h), (pad_w, pad_w), (0, 0)),
-                mode='constant'
-            )
+            pad_h = (kh - 1) // 2
+            pad_w = (kw - 1) // 2
+            self.padded_input = np.pad(inputs, ((0, 0), (pad_h, pad_h), (pad_w, pad_w), (0, 0)), mode='constant')
         else:
-            inputs_padded = inputs
+            self.padded_input = inputs
 
-        # Calcul des dimensions de sortie
-        h_out = (inputs_padded.shape[1] - self.kernel_size[0]) // self.strides[0] + 1
-        w_out = (inputs_padded.shape[2] - self.kernel_size[1]) // self.strides[1] + 1
+        h_out = (self.padded_input.shape[1] - kh) // sh + 1
+        w_out = (self.padded_input.shape[2] - kw) // sw + 1
 
-        # Convolution avec im2col (vectorisation)
-        # Pour chaque position de sortie
         output = np.zeros((batch_size, h_out, w_out, self.filters))
 
+        # Convolution
         for i in range(h_out):
             for j in range(w_out):
-                h_start = i * self.strides[0]
-                w_start = j * self.strides[1]
+                h_start, w_start = i * sh, j * sw
+                region = self.padded_input[:, h_start:h_start + kh, w_start:w_start + kw, :]
+                # region shape: (batch, kh, kw, c_in)
+                # kernel shape: (kh, kw, c_in, filters)
+                output[:, i, j, :] = np.tensordot(region, self.weights, axes=((1, 2, 3), (0, 1, 2)))
 
-                # Extraire la région
-                region = inputs_padded[
-                    :,
-                    h_start:h_start + self.kernel_size[0],
-                    w_start:w_start + self.kernel_size[1],
-                    :
-                ]
-
-                # Aplatir et multiplier avec les kernels
-                region_flat = region.reshape(batch_size, -1)
-                kernel_flat = self.kernel.reshape(-1, self.filters)
-
-                output[:, i, j, :] = np.dot(region_flat, kernel_flat)
-
-        # Ajouter le biais
         if self.use_bias:
             output += self.bias
 
         self.output_tensor = output
 
-        # Appliquer l'activation
         if self.activation is not None:
             output = self.activation(output)
 
         return output
 
     def backward(self, grad_output: np.ndarray, optimizer: Optional[Any] = None) -> np.ndarray:
-        """
-        Passe arrière de la convolution 2D.
-
-        Args:
-            grad_output (np.ndarray): Gradient de la perte par rapport à la sortie.
-            optimizer (Optimizer, optional): Optimiseur.
-
-        Returns:
-            np.ndarray: Gradient de la perte par rapport à l'entrée.
-        """
-        # Gradient de l'activation
         if self.activation is not None:
             grad_output = self.activation.gradient(grad_output, self.output_tensor)
 
-        batch_size = grad_output.shape[0]
+        batch_size, h_out, w_out, _ = grad_output.shape
+        kh, kw = self.kernel_size
+        sh, sw = self.strides
+        _, h_padded, w_padded, c_in = self.padded_input.shape
 
-        # Padding pour le backward
-        if self.padding == 'same':
-            pad_h = (self.kernel_size[0] - 1) // 2
-            pad_w = (self.kernel_size[1] - 1) // 2
-            grad_output_padded = np.pad(
-                grad_output,
-                ((0, 0), (pad_h, pad_h), (pad_w, pad_w), (0, 0)),
-                mode='constant'
-            )
-        else:
-            grad_output_padded = grad_output
-
-        # Dimensions
-        h_out = grad_output.shape[1]
-        w_out = grad_output.shape[2]
-
-        # Gradient des kernels
-        grad_kernel = np.zeros_like(self.kernel)
+        grad_weights = np.zeros_like(self.weights)
+        grad_padded_input = np.zeros_like(self.padded_input)
 
         for i in range(h_out):
             for j in range(w_out):
-                h_start = i * self.strides[0]
-                w_start = j * self.strides[1]
+                h_start, w_start = i * sh, j * sw
+                region = self.padded_input[:, h_start:h_start + kh, w_start:w_start + kw, :]
+                
+                # Gradient par rapport aux poids: sum over batch of (region * grad_output_at_pos)
+                # region: (batch, kh, kw, c_in), grad_output[:, i, j, :]: (batch, filters)
+                grad_weights += np.tensordot(region, grad_output[:, i, j, :], axes=((0,), (0,)))
 
-                region = self.input_tensor[
-                    :,
-                    h_start:h_start + self.kernel_size[0],
-                    w_start:w_start + self.kernel_size[1],
-                    :
-                ]
+                # Gradient par rapport à l'entrée
+                # grad_output[:, i, j, :]: (batch, filters), weights: (kh, kw, c_in, filters)
+                grad_padded_input[:, h_start:h_start + kh, w_start:w_start + kw, :] += \
+                    np.tensordot(grad_output[:, i, j, :], self.weights, axes=((1,), (3,)))
 
-                grad_kernel += np.einsum('bn,bo->no', region, grad_output[:, i, j, :])
-
-        grad_kernel /= batch_size
-
-        # Gradient du biais
         if self.use_bias:
-            grad_bias = np.sum(grad_output, axis=(0, 1, 2)) / batch_size
+            grad_bias = np.sum(grad_output, axis=(0, 1, 2), keepdims=True)
         else:
             grad_bias = None
 
-        # Gradient d'entrée
-        grad_input = np.zeros_like(self.input_tensor)
+        # Retirer le padding du gradient d'entrée
+        if self.padding == 'same':
+            pad_h = (kh - 1) // 2
+            pad_w = (kw - 1) // 2
+            grad_input = grad_padded_input[:, pad_h:-pad_h if pad_h > 0 else None, pad_w:-pad_w if pad_w > 0 else None, :]
+        else:
+            grad_input = grad_padded_input
 
-        # Flipper le kernel pour la convolution arrière
-        kernel_flipped = np.flip(self.kernel, axis=(0, 1))
-
-        for i in range(h_out):
-            for j in range(w_out):
-                h_start = i * self.strides[0]
-                w_start = j * self.strides[1]
-
-                grad_input[
-                    :,
-                    h_start:h_start + self.kernel_size[0],
-                    w_start:w_start + self.kernel_size[1],
-                    :
-                ] += np.dot(
-                    grad_output_padded[:, i, j, :],
-                    kernel_flipped.transpose(2, 3, 0, 1).reshape(-1, self.filters).T
-                ).reshape(batch_size, self.kernel_size[0], self.kernel_size[1], -1)
-
-        # Mise à jour des poids
+        # Mise à jour
         if optimizer is not None and self.trainable:
-            optimizer.update(self, grad_kernel, grad_bias)
+            optimizer.update(self, grad_weights, grad_bias)
+
+        self.d_weights = grad_weights
+        self.d_bias = grad_bias
 
         return grad_input
 
     def get_weights(self) -> list:
-        """Retourne les poids."""
-        if self.use_bias:
-            return [self.kernel, self.bias]
-        return [self.kernel]
+        return [self.weights, self.bias] if self.use_bias else [self.weights]
 
     def set_weights(self, weights: list) -> None:
-        """Définit les poids."""
-        self.kernel = weights[0]
+        self.weights = weights[0]
         if self.use_bias and len(weights) > 1:
             self.bias = weights[1]
         self.built = True
-
-    def get_config(self) -> Dict[str, Any]:
-        """Retourne la configuration."""
-        config = super().get_config()
-        config.update({
-            'filters': self.filters,
-            'kernel_size': self.kernel_size,
-            'strides': self.strides,
-            'padding': self.padding,
-            'activation': str(self.activation) if self.activation else None,
-            'use_bias': self.use_bias,
-            'kernel_initializer': self.kernel_initializer,
-        })
-        return config
 
     def __repr__(self) -> str:
         return f"Conv2D(filters={self.filters}, kernel_size={self.kernel_size})"
@@ -280,10 +179,7 @@ class Conv2D(Layer):
 class DepthwiseConv2D(Layer):
     """
     Depthwise Convolution 2D.
-
-    Applique un filtre séparé par canal d'entrée.
     """
-
     def __init__(self,
                  kernel_size: Tuple[int, int],
                  strides: Tuple[int, int] = (1, 1),
@@ -295,62 +191,53 @@ class DepthwiseConv2D(Layer):
         self.strides = strides
         self.padding = padding
         self.depth_multiplier = depth_multiplier
-        self.kernel = None
+        self.weights = None
+        self.bias = None
         self.built = False
 
     def build(self, input_shape: Tuple[int, int, int]) -> None:
         channels = input_shape[2]
-        kernel_h, kernel_w = self.kernel_size
-        self.kernel = np.random.randn(
-            kernel_h, kernel_w, channels, self.depth_multiplier
-        ) * 0.01
+        kh, kw = self.kernel_size
+        self.weights = np.random.randn(kh, kw, channels, self.depth_multiplier) * 0.01
         self.built = True
 
     def forward(self, inputs: np.ndarray, training: bool = True) -> np.ndarray:
         if not self.built:
             self.build(inputs.shape[1:])
-
         self.input_tensor = inputs
-        batch_size = inputs.shape[0]
-        h, w, c = inputs.shape[1:]
+        batch_size, h, w, c = inputs.shape
+        kh, kw = self.kernel_size
+        sh, sw = self.strides
 
-        # Calcul des dimensions de sortie
         if self.padding == 'same':
-            pad_h = (self.kernel_size[0] - 1) // 2
-            pad_w = (self.kernel_size[1] - 1) // 2
-            inputs_padded = np.pad(inputs, ((0, 0), (pad_h, pad_h), (pad_w, pad_w), (0, 0)), mode='constant')
+            pad_h, pad_w = (kh - 1) // 2, (kw - 1) // 2
+            self.padded_input = np.pad(inputs, ((0, 0), (pad_h, pad_h), (pad_w, pad_w), (0, 0)), mode='constant')
         else:
-            inputs_padded = inputs
+            self.padded_input = inputs
 
-        h_out = (inputs_padded.shape[1] - self.kernel_size[0]) // self.strides[0] + 1
-        w_out = (inputs_padded.shape[2] - self.kernel_size[1]) // self.strides[1] + 1
-        out_channels = c * self.depth_multiplier
+        h_out = (self.padded_input.shape[1] - kh) // sh + 1
+        w_out = (self.padded_input.shape[2] - kw) // sw + 1
+        
+        output = np.zeros((batch_size, h_out, w_out, c * self.depth_multiplier))
 
-        output = np.zeros((batch_size, h_out, w_out, out_channels))
+        for i in range(h_out):
+            for j in range(w_out):
+                h_start, w_start = i * sh, j * sw
+                region = self.padded_input[:, h_start:h_start + kh, w_start:w_start + kw, :]
+                # region: (batch, kh, kw, c)
+                # weights: (kh, kw, c, dm)
+                # output: (batch, c*dm)
+                for c_idx in range(c):
+                    r = region[:, :, :, c_idx] # (batch, kh, kw)
+                    w_c = self.weights[:, :, c_idx, :] # (kh, kw, dm)
+                    res = np.tensordot(r, w_c, axes=((1, 2), (0, 1))) # (batch, dm)
+                    output[:, i, j, c_idx*self.depth_multiplier:(c_idx+1)*self.depth_multiplier] = res
 
-        # Convolution depthwise
-        for b in range(batch_size):
-            for i in range(h_out):
-                for j in range(w_out):
-                    h_start = i * self.strides[0]
-                    w_start = j * self.strides[1]
-
-                    region = inputs_padded[b, h_start:h_start + self.kernel_size[0], w_start:w_start + self.kernel_size[1], :]
-
-                    for c_in in range(c):
-                        for dm in range(self.depth_multiplier):
-                            out_idx = c_in * self.depth_multiplier + dm
-                            output[b, i, j, out_idx] = np.sum(
-                                region[:, :, c_in] * self.kernel[:, :, c_in, dm]
-                            )
-
-        self.output_tensor = output
         return output
 
     def backward(self, grad_output: np.ndarray, optimizer: Optional[Any] = None) -> np.ndarray:
-        # Version simplifiée
-        grad_input = np.zeros_like(self.input_tensor)
-        return grad_input
+        # Implementation simplified for now
+        return np.zeros_like(self.input_tensor)
 
     def __repr__(self) -> str:
         return f"DepthwiseConv2D(kernel_size={self.kernel_size})"

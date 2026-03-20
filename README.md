@@ -1,48 +1,38 @@
 # NumPyNet
 
-**Une bibliothèque de Deep Learning complète écrite en pur NumPy (CPU uniquement)**
+**Une bibliothèque de Deep Learning complète et éducative, implémentée en pur NumPy.**
 
-NumPyNet est une implémentation complète de Keras/TensorFlow en pur Python/NumPy.
-Aucune dépendance externe (sauf NumPy) - parfait pour comprendre le fonctionnement interne des réseaux de neurones.
+NumPyNet est une bibliothèque de Deep Learning conçue pour la clarté et la compréhension des mécanismes internes des réseaux de neurones. Entièrement écrite en Python et NumPy, elle ne dépend d'aucune autre bibliothèque de calcul numérique, ce qui en fait un outil idéal pour l'apprentissage et l'expérimentation. Inspirée par des frameworks comme Keras, NumPyNet offre une API intuitive pour construire, entraîner et évaluer des modèles de réseaux de neurones.
 
-**C'est pas une copie exacte et parfaite de keras**. Je l'ai construit en 2 jours. Elle peut contenir des bugs. C'est pour çà que je compte sur vous pour développer cette lib.
+## Fonctionnalités Clés
 
----
-
-## Table des Matières
-
-1. [Installation](#installation)
-2. [Guide de Démarrage Rapide](#guide-de-démarrage-rapide)
-3. [Architecture de la Bibliothèque](#architecture-de-la-bibliothèque)
-4. [API Référence](#api-référence)
-5. [Exemples](#exemples)
-6. [Architecture des Modèles](#architecture-des-modèles)
-
----
+*   **Implémentation pure NumPy** : Comprenez chaque opération sans abstraction complexe.
+*   **Architecture Modulaire** : Facile à étendre avec de nouvelles couches, fonctions d'activation, pertes et optimiseurs.
+*   **API Keras-like** : Construisez des modèles séquentiels rapidement et intuitivement.
+*   **Large éventail de composants** :
+    *   **Couches** : `Dense`, `Conv2D`, `DepthwiseConv2D`, `Flatten`, `Reshape`, `Permute`, `RepeatVector`, `Dropout`, `SpatialDropout2D`, `AlphaDropout`, `BatchNormalization`, `LayerNormalization`, `MaxPooling2D`, `AveragePooling2D`.
+    *   **Activations** : `ReLU`, `Sigmoid`, `Tanh`, `Softmax`, `LeakyReLU`, `ELU`, `Swish`.
+    *   **Pertes** : `MSE`, `MAE`, `RMSE`, `HuberLoss`, `LogCosh`, `BinaryCrossentropy`, `CategoricalCrossentropy`, `SparseCategoricalCrossentropy`, `KLDivergence`, `Poisson`, `CosineSimilarity`.
+    *   **Optimiseurs** : `SGD`, `Adam`, `Adamax`, `Nadam`, `RMSprop`, `Adagrad`, `Momentum`, `AdamW`.
+*   **Outils d'évaluation** : Fonctions `compile`, `fit`, `evaluate`, `predict` et `summary` pour un workflow complet.
 
 ## Installation
 
+Pour installer NumPyNet, clonez le dépôt et installez les dépendances (uniquement NumPy) :
+
 ```bash
-# Cloner le dépôt
 git clone https://github.com/SamirGPT/numpynet.git
 cd numpynet
-
-# Installer (juste NumPy requis)
-pip install numpy
-
-# Ou ajouter au path Python
-export PYTHONPATH=$PYTHONPATH:$(pwd)
+pip install -e .
 ```
 
-**Requirements:**
-- Python 3.8+
-- NumPy 1.20+
-
----
+**Prérequis :**
+*   Python 3.8+
+*   NumPy 1.20+
 
 ## Guide de Démarrage Rapide
 
-### 1. Classification Simple (XOR)
+### 1. Classification Binaire (Problème XOR)
 
 ```python
 import numpy as np
@@ -56,101 +46,86 @@ y = np.array([[0], [1], [1], [0]], dtype=np.float32)
 
 # Créer le modèle
 model = Sequential([
-    Dense(4, activation=ReLU()),
-    Dense(1, activation=Sigmoid())
+    Dense(8, activation=ReLU(), name=\'hidden1\'),
+    Dense(1, activation=Sigmoid(), name=\'output\')
 ])
 
 # Compiler et entraîner
-model.compile(optimizer=Adam(), loss=MSE())
-history = model.fit(X, y, epochs=1000, verbose=1)
+model.compile(optimizer=Adam(learning_rate=0.01), loss=MSE(), metrics=[\'accuracy\'])
+model.fit(X, y, epochs=500, batch_size=4, verbose=0)
 
-# Prédire
-predictions = model.predict(X)
+# Évaluer et prédire
+print("\nÉvaluation:", model.evaluate(X, y))
+print("Prédictions:", model.predict(X))
 ```
 
-### 2. Classification Multi-classes
+### 2. Classification Multi-classes (MNIST simplifié)
 
 ```python
-from numpynet import Dense, Dropout, ReLU, Softmax
+import numpy as np
+from numpynet import Sequential, Dense, ReLU, Softmax, Flatten
 from numpynet.losses import CategoricalCrossentropy
+from numpynet.optimizers import Adam
 
-# Créer un réseau pour classification
+# Données synthétiques (remplacez par de vraies données MNIST)
+x_train = np.random.randn(1000, 28, 28, 1).astype(np.float32)
+y_train = np.zeros((1000, 10))
+y_train[np.arange(1000), np.random.randint(0, 10, 1000)] = 1
+
+x_test = np.random.randn(100, 28, 28, 1).astype(np.float32)
+y_test = np.zeros((100, 10))
+y_test[np.arange(100), np.random.randint(0, 10, 100)] = 1
+
 model = Sequential([
-    Dense(128, activation=ReLU()),
-    Dropout(0.2),
-    Dense(64, activation=ReLU()),
-    Dense(10, activation=Softmax())
+    Flatten(name=\'flatten\'),
+    Dense(128, activation=ReLU(), name=\'dense1\'),
+    Dense(64, activation=ReLU(), name=\'dense2\'),
+    Dense(10, activation=Softmax(), name=\'output\')
 ])
 
-model.compile(
-    optimizer='adam',           # ou Adam(learning_rate=0.001)
-    loss='categorical_crossentropy',
-    metrics=['accuracy']
-)
-
-# Entraîner
-model.fit(x_train, y_train_onehot, epochs=10, batch_size=32)
-
-# Évaluer
-results = model.evaluate(x_test, y_test_onehot)
+model.compile(optimizer=\'adam\', loss=\'categorical_crossentropy\', metrics=[\'accuracy\'])
+model.fit(x_train, y_train, epochs=5, batch_size=32, verbose=1, validation_data=(x_test, y_test))
+model.evaluate(x_test, y_test)
 ```
 
-### 3. Régression
+### 3. Régression Simple
 
 ```python
+import numpy as np
+from numpynet import Sequential, Dense, ReLU
 from numpynet.losses import MSE
+from numpynet.optimizers import Adam
+
+X = np.linspace(-1, 1, 100).reshape(-1, 1)
+y = 2 * X + 1 + np.random.normal(0, 0.1, X.shape)
 
 model = Sequential([
-    Dense(64, activation=ReLU()),
-    Dense(64, activation=ReLU()),
-    Dense(1)  # Pas d'activation pour régression
+    Dense(64, activation=ReLU(), name=\'hidden1\'),
+    Dense(64, activation=ReLU(), name=\'hidden2\'),
+    Dense(1, name=\'output\') # Pas d\'activation pour régression
 ])
 
-model.compile(optimizer='adam', loss=MSE())
-model.fit(X_train, y_train, epochs=100, batch_size=32)
-predictions = model.predict(X_test)
-```
+model.compile(optimizer=Adam(learning_rate=0.01), loss=MSE())
+model.fit(X, y, epochs=100, batch_size=32, verbose=0)
 
----
+print("\nÉvaluation:", model.evaluate(X, y))
+print("Prédictions pour X=[0.0]:", model.predict(np.array([[0.0]])))
+```
 
 ## Architecture de la Bibliothèque
 
 ```
 numpynet/
-├── core/           # Classes de base
-│   ├── layer.py     # Classe Layer abstraite
-│   └── model.py     # Classe Model abstraite
-├── models/          # Implémentations de modèles
-│   └── sequential.py
-├── layers/         # Types de couches
-│   ├── dense.py          # Dense (FC)
-│   ├── conv2d.py          # Convolution 2D
-│   ├── pooling.py         # Max/Average Pooling
-│   ├── flatten.py         # Aplatir
-│   ├── dropout.py         # Regularization
-│   └── batch_normalization.py
-├── activations/     # Fonctions d'activation
-│   ├── relu.py
-│   ├── sigmoid.py
-│   ├── tanh.py
-│   ├── softmax.py
-│   └── ...
-├── losses/         # Fonctions de perte
-│   ├── mse.py
-│   ├── binary_crossentropy.py
-│   └── categorical_crossentropy.py
-├── optimizers/     # Algorithmes d'optimisation
-│   ├── sgd.py
-│   ├── adam.py
-│   ├── rmsprop.py
-│   └── ...
-└── examples/        # Exemples d'utilisation
-    ├── xor.py
-    ├── mnist.py
-    └── regression.py
+├── core/           # Classes de base (Layer, Model)
+├── models/         # Implémentations de modèles (Sequential)
+├── layers/         # Types de couches (Dense, Conv2D, Pooling, etc.)
+├── activations/    # Fonctions d\'activation (ReLU, Sigmoid, Softmax, etc.)
+├── losses/         # Fonctions de perte (MSE, Crossentropy, etc.)
+├── optimizers/     # Algorithmes d\'optimisation (Adam, SGD, etc.)
+├── examples/       # Exemples d\'utilisation
+├── __init__.py     # Initialisation du package et exports
+└── setup.py        # Fichier d\'installation (pip install -e .)
 ```
-
----
 
 ## API Référence
 
@@ -158,297 +133,94 @@ numpynet/
 
 #### `Sequential(layers=None, name=None)`
 
-Modèle séquentiel - empile des couches les unes après les autres.
+Un modèle séquentiel est une pile linéaire de couches. Vous pouvez construire un modèle en passant une liste d'instances de couches au constructeur, ou en ajoutant des couches une par une avec la méthode `add()`.
 
-```python
-from numpynet import Sequential, Dense, ReLU
-
-model = Sequential([
-    Dense(128, activation=ReLU()),
-    Dense(10, activation=Softmax())
-])
-```
-
-**Méthodes:**
-- `add(layer)` - Ajoute une couche
-- `compile(optimizer, loss, metrics)` - Compile le modèle
-- `fit(x, y, epochs, batch_size, validation_data)` - Entraîne
-- `predict(x)` - Fait des prédictions
-- `evaluate(x, y)` - Évalue le modèle
-- `summary()` - Affiche l'architecture
-- `save_weights(filepath)` / `load_weights(filepath)` - Sauvegarde
-
----
+**Méthodes Clés :**
+*   `add(layer)` : Ajoute une couche au modèle.
+*   `compile(optimizer, loss, metrics)` : Configure le processus d'entraînement du modèle.
+*   `fit(x, y, epochs, batch_size, validation_data, verbose)` : Entraîne le modèle pour un nombre donné d'époques.
+*   `evaluate(x, y, batch_size, verbose)` : Évalue la performance du modèle sur des données de test.
+*   `predict(x, batch_size)` : Génère des prédictions pour les échantillons d'entrée.
+*   `summary()` : Affiche un résumé textuel de l'architecture du modèle.
+*   `save_weights(filepath)` / `load_weights(filepath)` : Sauvegarde et charge les poids du modèle.
 
 ### Couches
 
-#### `Dense(units, activation=None, use_bias=True)`
-
-Couche entièrement connectée.
-
-```python
-# Syntaxe simple
-Dense(128)
-
-# Avec activation
-Dense(128, activation=ReLU())
-
-# Nommeée
-Dense(128, activation=ReLU(), name='hidden1')
-```
-
-#### `Conv2D(filters, kernel_size, strides=1, padding=0, activation=None)`
-
-Couche de convolution 2D.
-
-```python
-Conv2D(filters=32, kernel_size=(3, 3), padding='same', activation=ReLU())
-Conv2D(filters=64, kernel_size=(5, 5), strides=2, activation=ReLU())
-```
-
-#### `MaxPooling2D(pool_size=2, strides=None)` / `AveragePooling2D`
-
-Couches de pooling.
-
-```python
-MaxPooling2D(pool_size=(2, 2))
-AveragePooling2D(pool_size=(2, 2))
-```
-
-#### `Flatten()`
-
-Aplatit l'entrée pour les couches denses.
-
-```python
-Flatten()
-```
-
-#### `Dropout(rate)`
-
-Régularisation par désactivation aléatoire.
-
-```python
-Dropout(0.2)  # 20% des neurones désactivés
-```
-
-#### `BatchNormalization(momentum=0.99, epsilon=1e-3)`
-
-Normalise les activations par batch.
-
-```python
-BatchNormalization()
-```
-
----
+| Classe | Description | Paramètres Clés |
+|---|---|---|
+| `Dense` | Couche entièrement connectée. | `units`, `activation`, `use_bias` |
+| `Conv2D` | Couche de convolution 2D. | `filters`, `kernel_size`, `strides`, `padding`, `activation` |
+| `DepthwiseConv2D` | Convolution par canal. | `kernel_size`, `strides`, `padding`, `depth_multiplier` |
+| `MaxPooling2D` | Pooling maximal 2D. | `pool_size`, `strides`, `padding` |
+| `AveragePooling2D` | Pooling moyen 2D. | `pool_size`, `strides`, `padding` |
+| `Flatten` | Aplatit l'entrée en 1D. | - |
+| `Reshape` | Remet en forme l'entrée. | `target_shape` |
+| `Permute` | Permute les dimensions de l'entrée. | `perm` |
+| `RepeatVector` | Répète l'entrée `n` fois. | `n` |
+| `Dropout` | Applique le Dropout pour la régularisation. | `rate` |
+| `SpatialDropout2D` | Dropout spatial pour les données 2D. | `rate` |
+| `AlphaDropout` | Dropout qui maintient la moyenne et la variance. | `rate` |
+| `BatchNormalization` | Normalisation par lots. | `momentum`, `epsilon`, `axis` |
+| `LayerNormalization` | Normalisation par couche. | `epsilon` |
 
 ### Fonctions d'Activation
 
-| Classe | Fonction | Dérivée |
-|--------|----------|---------|
-| `ReLU()` | max(0, x) | 1 si x > 0, 0 sinon |
-| `Sigmoid()` | 1/(1+e^-x) | sigmoid * (1-sigmoid) |
-| `Tanh()` | (e^x - e^-x)/(e^x + e^-x) | 1 - tanh² |
-| `Softmax()` | e^x / sum(e^x) | Jacobian complexe |
-| `LeakyReLU(alpha=0.01)` | x si x>0, alpha*x sinon | 1 ou alpha |
-| `ELU(alpha=1.0)` | x si x>0, alpha*(e^x-1) sinon | 1 ou alpha*e^x + alpha |
-| `Swish(beta=1.0)` | x * sigmoid(beta*x) | - |
-
-```python
-from numpynet import ReLU, Sigmoid, Tanh, Softmax
-
-# Usage
-Dense(128, activation=ReLU())
-Dense(10, activation=Softmax())
-```
-
----
+| Classe | Description | Formule | Dérivée |
+|---|---|---|---|
+| `ReLU` | Rectified Linear Unit | `max(0, x)` | `1 si x > 0, 0 sinon` |
+| `Sigmoid` | Fonction sigmoïde | `1 / (1 + e^-x)` | `sigmoid * (1 - sigmoid)` |
+| `Tanh` | Tangente hyperbolique | `(e^x - e^-x) / (e^x + e^-x)` | `1 - tanh²` |
+| `Softmax` | Normalisation exponentielle | `e^x / sum(e^x)` | _Jacobien complexe_ |
+| `LeakyReLU` | Leaky Rectified Linear Unit | `x si x>0, alpha*x sinon` | `1 ou alpha` |
+| `ELU` | Exponential Linear Unit | `x si x>0, alpha*(e^x-1) sinon` | `1 ou alpha*e^x + alpha` |
+| `Swish` | Swish activation | `x * sigmoid(beta*x)` | _Complexe_ |
 
 ### Fonctions de Perte
 
-| Classe | Usage | Formule |
-|--------|-------|---------|
-| `MSE()` | Régression | mean((y - y_pred)²) |
-| `BinaryCrossentropy()` | Binaire | -y*log(y_pred) - (1-y)*log(1-y_pred) |
-| `CategoricalCrossentropy()` | Multi-classes (one-hot) | -sum(y * log(y_pred)) |
-| `SparseCategoricalCrossentropy()` | Multi-classes (int) | -log(y_pred[y]) |
-
-```python
-from numpynet.losses import MSE, CategoricalCrossentropy
-
-model.compile(optimizer='adam', loss=MSE())  # Régression
-model.compile(optimizer='adam', loss='categorical_crossentropy')  # Par string
-```
-
----
+| Classe | Usage Principal | Formule |
+|---|---|---|
+| `MSE` | Régression | `mean((y_true - y_pred)²) ` |
+| `MAE` | Régression (robuste aux outliers) | `mean(|y_true - y_pred|)` |
+| `RMSE` | Régression | `sqrt(mean((y_true - y_pred)²))` |
+| `HuberLoss` | Régression (mixte MSE/MAE) | _Voir implémentation_ |
+| `LogCosh` | Régression (lisse, robuste) | `mean(log(cosh(y_true - y_pred)))` |
+| `BinaryCrossentropy` | Classification binaire | `-y*log(y_pred) - (1-y)*log(1-y_pred)` |
+| `CategoricalCrossentropy` | Classification multi-classes (one-hot) | `-sum(y_true * log(y_pred))` |
+| `SparseCategoricalCrossentropy` | Classification multi-classes (entiers) | `-log(y_pred[y_true])` |
+| `KLDivergence` | Mesure de distance entre distributions | `sum(p_true * log(p_true / p_pred))` |
+| `Poisson` | Problèmes de comptage | `y_pred - y_true * log(y_pred)` |
+| `CosineSimilarity` | Mesure de similarité | `1 - cos(y_true, y_pred)` |
 
 ### Optimiseurs
 
-| Classe | Description | Paramètres |
-|--------|-------------|-------------|
-| `SGD(lr, momentum, nesterov)` | Gradient Descent Stochastique | lr=0.01 |
-| `Adam(lr, beta1, beta2)` | Adaptive Moment Estimation | lr=0.001 |
-| `RMSprop(lr, rho, momentum)` | Root Mean Square Propagation | lr=0.001 |
-| `Adagrad(lr)` | Adaptive Gradients | lr=0.01 |
-| `Momentum(lr, momentum)` | Momentum classique | lr=0.01 |
-| `AdamW(lr, weight_decay)` | Adam avec weight decay | lr=0.001 |
-
-```python
-from numpynet.optimizers import SGD, Adam, AdamW
-
-# Par string (recommandé)
-model.compile(optimizer='adam', loss='mse')
-
-# Par instance
-model.compile(optimizer=Adam(learning_rate=0.001, beta1=0.9), loss='mse')
-```
-
----
+| Classe | Description | Paramètres Clés |
+|---|---|---|
+| `SGD` | Gradient Descent Stochastique | `learning_rate`, `momentum`, `nesterov` |
+| `Adam` | Adaptive Moment Estimation | `learning_rate`, `beta1`, `beta2`, `epsilon` |
+| `Adamax` | Variante d'Adam avec norme L-infini | `learning_rate`, `beta1`, `beta2`, `epsilon` |
+| `Nadam` | Adam avec Nesterov momentum | `learning_rate`, `beta1`, `beta2`, `epsilon` |
+| `RMSprop` | Root Mean Square Propagation | `learning_rate`, `rho`, `epsilon` |
+| `Adagrad` | Adaptive Gradients | `learning_rate`, `epsilon` |
+| `Momentum` | SGD avec Momentum | `learning_rate`, `momentum` |
+| `AdamW` | Adam avec Weight Decay découplé | `learning_rate`, `weight_decay` |
 
 ## Exemples
 
-Exécuter les exemples:
+Vous pouvez exécuter les exemples fournis dans le dossier `examples/` pour voir NumPyNet en action :
 
 ```bash
-# XOR (classification binaire)
 python -m numpynet.examples.xor
-
-# Régression
+python -m numpynet.examples.mnist_simple
 python -m numpynet.examples.regression
-
-# MNIST (classification)
-python -m numpynet.examples.mnist
 ```
 
-### Exemple Complet: CNN pour Images
+## Contribuer
 
-```python
-from numpynet import Sequential, Dense, Dropout, Flatten
-from numpynet.layers import Conv2D, MaxPooling2D
-from numpynet import ReLU, Softmax
+NumPyNet est un projet open-source et les contributions sont les bienvenues ! Si vous souhaitez améliorer la bibliothèque, corriger des bugs ou ajouter de nouvelles fonctionnalités, n'hésitez pas à soumettre une Pull Request.
 
-model = Sequential([
-    # Bloc convolutif 1
-    Conv2D(filters=32, kernel_size=(3, 3), padding='same', activation=ReLU()),
-    MaxPooling2D(pool_size=(2, 2)),
+## Licence
 
-    # Bloc convolutif 2
-    Conv2D(filters=64, kernel_size=(3, 3), padding='same', activation=ReLU()),
-    MaxPooling2D(pool_size=(2, 2)),
-
-    # Classification
-    Flatten(),
-    Dense(128, activation=ReLU()),
-    Dropout(0.5),
-    Dense(10, activation=Softmax())
-])
-
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-model.summary()
-```
-
----
-
-## Architecture des Modèles
-
-### Forward Pass (Passe Avant)
-
-```
-Input → Layer1 → Layer2 → ... → LayerN → Output
-         ↓         ↓              ↓
-      stocke    stocke          stocke
-      input     input           output
-```
-
-### Backward Pass (Passe Arrière)
-
-```
-Output ← LayerN.backward(dL/dy) ← ... ← Layer2.backward ← Layer1.backward
-                          ↓                        ↓
-                       met à jour              met à jour
-                       les poids               les poids
-```
-
-### Boucle d'Entraînement
-
-```
-Pour chaque époque:
-    Mélanger les données
-
-    Pour chaque batch:
-        1. forward(inputs) → predictions
-        2. loss(y, predictions) → loss_value
-        3. loss.backward() → gradients
-        4. model.backward(gradients)
-           → Chaque couche calcule dL/dX et met à jour ses poids
-        5. optimizer.apply_gradients()
-```
-
----
-
-## FAQ
-
-### Q: Comment ajouter une nouvelle couche?
-
-```python
-from numpynet.core.layer import Layer
-import numpy as np
-
-class MaCouche(Layer):
-    def __init__(self, units, **kwargs):
-        super().__init__(**kwargs)
-        self.units = units
-        self.weights = None
-        self.bias = None
-
-    def build(self, input_shape):
-        self.weights = np.random.randn(input_shape[-1], self.units) * 0.1
-        self.bias = np.zeros((1, self.units))
-
-    def forward(self, inputs):
-        self.input = inputs
-        self.output = np.dot(inputs, self.weights) + self.bias
-        return self.output
-
-    def backward(self, grad_output, optimizer=None):
-        grad_weights = np.dot(self.input.T, grad_output)
-        grad_bias = np.sum(grad_output, axis=0, keepdims=True)
-        grad_input = np.dot(grad_output, self.weights.T)
-
-        if optimizer:
-            optimizer.update(self, grad_weights, grad_bias)
-
-        return grad_input
-```
-
-### Q: Comment ajouter une nouvelle activation?
-
-```python
-import numpy as np
-
-class MonActivation:
-    def __call__(self, x):
-        return self.forward(x)
-
-    def forward(self, x):
-        return np.tanh(x)  # Exemple
-
-    def gradient(self, grad_output, output):
-        return grad_output * (1 - output**2)  # d/dx tanh(x) = 1 - tanh²(x)
-```
-
-### Q: Pourquoi mon modèle ne converge pas?
-
-1. **Learning rate trop grand**: Réduisez le lr
-2. **Pas assez d'époques**: Augmentez les epochs
-3. **Architecture inadaptée**: Trop petit ou trop grand réseau
-4. **Données non normalisées**: Normalisez vos entrées
-5. **Vanishing gradients**: Utilisez ReLU ou BatchNorm
-
----
-
-## License
-
-MIT License - Libre d'utilisation et de modification.
+Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
 ---
 
